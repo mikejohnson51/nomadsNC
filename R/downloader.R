@@ -6,7 +6,7 @@
 #' @return a file path
 #' @export
 
-create_nomads = function(type = "short_range", 
+create_nomads_nc = function(type = "short_range", 
                          num = 10000, 
                          ensemble = NULL, 
                          dstfile = NULL) {
@@ -14,6 +14,8 @@ create_nomads = function(type = "short_range",
   fileList = get_nomads_filelist(type = type,
                                  num  = num,
                                  ensemble = ensemble)
+  
+  if(file.exists(dstfile)){file.remove(dstfile)}
   
   dir      = paste0(dirname(dstfile), "/")
   
@@ -24,10 +26,12 @@ create_nomads = function(type = "short_range",
   
   # Extract COMIDs to new file
   new.comid.file = paste('ncks -O -v feature_id', in_files[1], comid.file)
+  message("Extracting COMID file...")
     system(new.comid.file)
   
   # Loop over files extracting streamflow, adding time dimininson, making it record dim
-  for (i in 1:length(in_files)) {
+    message("Extracting streamflow and adding time...")
+    for (i in 1:length(in_files)) {
     extract.streamflow = paste('ncks -O -4 -L 1 --cnk_plc=all --cnk_map=dmn -C -v streamflow',
                                in_files[i],
                                in_files[i])
@@ -54,24 +58,14 @@ create_nomads = function(type = "short_range",
   }
   
   # Concate all NC file by time diminsion
+    message("Concatinating files...")
   concat.files = paste('ncrcat', paste(in_files, collapse = " "), dstfile)
-  
     system(concat.files, intern = TRUE)
     file.remove(in_files)
-  
-  add.comid.variable = paste0(
-    'ncap2 -O --cnk_plc=uck -s ',
-    "'defdim(",
-    '"feature_id",1);feature_id[feature_id]=',
-    101,
-    "' ",
-    dstfile,
-    " ",
-    dstfile
-  )
-  
-    system(add.comid.variable)
-  
+
+  paste("ncap2 -O -s'feature_id[$feature_id]=1234'", dstfile, dstfile) %>% system()
+    
+  message("Fill COMID values...")
   add.comid.values = paste('ncks -A -v feature_id', comid.file, dstfile)
     system(add.comid.values, intern = TRUE)
   
@@ -79,6 +73,7 @@ create_nomads = function(type = "short_range",
   
     file.remove(comid.file)
   
+    message("Rechunk and pack file...")
   rechunk = paste0(
     'ncks -O --cnk_plc=g2d --cnk_dmn feature_id,10000 --cnk_dmn time,',
     length(fileList$local),
@@ -96,6 +91,7 @@ create_nomads = function(type = "short_range",
   
     system(packQ)
   
+    message("Compress file...")
   compress = paste('ncks -4 -L 3 -O', dstfile, dstfile)
     system(compress)
   

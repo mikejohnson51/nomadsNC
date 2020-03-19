@@ -12,6 +12,7 @@ make_url = function(date, type){
 #' @title Error Checking for confirugartion/ensemble pairs
 #' @param type a NWM configuration
 #' @param ensemble an ensemble member number
+#' @importFrom dplyr between 
 #' @return a kosher configuration
 #' @export
 
@@ -78,13 +79,14 @@ find_f = function(type, files, domain){
 #' @param ensemble an ensemble member number
 #' @param num a number of files to download, default = all
 #' @return a list of meta.data information
+#' @importFrom dplyr arrange filter mutate slice
 #' @export
 
 get_nomads_filelist = function(type = NULL,
                                ensemble = NULL,
                                num = 6) {
   
-  
+  time     <-  f <- NULL
   type     <-  error_checking(type, ensemble)
   ensemble <-  paste0("_mem", ensemble)
   
@@ -102,8 +104,16 @@ get_nomads_filelist = function(type = NULL,
   avail.days = gsub(".*[m.]([^.]+)[<].*", "\\1", avail.days)
   date = max(as.Date(gsub("/", "", avail.days), format = "%Y%m%d"))
 
-  base.url <- make_url(date, type)
-  files    <- suppressMessages(readLines(base.url, warn = FALSE))
+  files    <- tryCatch({
+      suppressMessages(readLines( make_url(date, type), warn = FALSE))}, 
+      error = function(e){
+        date <<- date - 1
+        suppressMessages(readLines(make_url(date, type), warn = FALSE))
+      },
+      warning = function(w){
+        date <<- date - 1
+        suppressMessages(readLines(make_url(date, type), warn = FALSE))
+      })
 
   filenames = regmatches(files, gregexpr('(\").*?(\")', files, perl = TRUE))
   filenames = filenames[grep(paste0(gsub(ensemble, "", base.type),".channel"), filenames)] 
@@ -124,8 +134,8 @@ get_nomads_filelist = function(type = NULL,
   return(
     list(type = type,
          date = date,
-         startTime = timeOrigin,
-         unix = as.numeric(dd),
+         startTime = all$t[1],
+         unix = all$unix,
          urls = all$files)
     )
 }
@@ -135,6 +145,7 @@ get_nomads_filelist = function(type = NULL,
 #' @param fileList return from \code{get_nomads_filelist}
 #' @param dir a directory to write data to
 #' @return a list of meta.data information
+#' @importFrom httr GET write_disk progress
 #' @export
 
 download_nomads = function(fileList = NULL, dir = NULL){
@@ -143,13 +154,13 @@ download_nomads = function(fileList = NULL, dir = NULL){
   
   fileList$local = file.path(dir, basename(fileList$urls))
   
-  for(i in seq_along(urls)){
+  for(i in seq_along(fileList$local)){
     
-    if (!file.exists(outfiles[i])) {
+    if (!file.exists(fileList$local[i])) {
       
       message("Downloading ", basename(fileList$urls[i]))
       resp <-  httr::GET(fileList$urls[i],
-                         httr::write_disk(fileList$outfiles[i], overwrite = TRUE),
+                         httr::write_disk(fileList$local[i], overwrite = TRUE),
                          httr::progress())
       
       if (resp$status_code != 200) {
