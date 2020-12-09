@@ -72,13 +72,13 @@ plot(Q, main = "NHD Catchement with Index 102991",
 # Specific ID requests
 
 Lets take it one step further, lets say you know your location (e.g. Colorado Springs), and what to find the streamflow record related to your catchment.
-To do this we can use dataRetrieval::findNLDI!
+To do this we can use [dataRetrieval](https://usgs-r.github.io/dataRetrieval/):
 
 ```{r}
 library(dataRetrieval)
 
 # use dataRetrieval::findNLDI to identify your catchment COMID
-comid <- findNLDI(location = c(-104.8253, 38.83396))$origin$comid
+comid <- dataRetrieval::findNLDI(location = c(-104.8253, 38.83396))$origin$comid
 
 # Find that COMID position in the complete NetCDF file
 comid_index <- match(comid, var.get.nc(nc, "feature_id", unpack = TRUE))
@@ -97,23 +97,22 @@ Lets say you wanted a map of the maximum streamflow over the current forcast for
 this is a little trickier but totally doable using [nhdplusTools](https://usgs-r.github.io/nhdplusTools/)
 
 ```{r}
-library(sf)
 library(nhdplusTools)
 
 row_id <- arrayInd(which.max(allQ), dim(allQ))[1]
 max_flow_comid <- var.get.nc(nc, "feature_id", unpack = TRUE)[row_id]
 
-feature_of_interest <- get_vaa("reachcode") %>% 
+feature_of_interest <- nhdplusTools::get_vaa("reachcode") %>% 
   filter(comid == max_flow_comid) %>% 
   mutate(huc8 = substr(reachcode, 1, 8))
 
-huc8 <-  get_huc8(id = feature_of_interest$huc8)
-nhd  <-  get_nhdplus(AOI = huc8)
+huc8 <-  nhdplusTools::get_huc8(id = feature_of_interest$huc8)
+nhd  <-  nhdplusTools::get_nhdplus(AOI = huc8)
 
 comid_index <- match(nhd$comid, var.get.nc(nc, "feature_id", unpack = TRUE))
 
 records <- do.call(rbind, lapply(1:length(comid_index), FUN = function(x){ 
-  var.get.nc(nc, "streamflow", start = c(comid_index[x],1), count =c(1, 18), unpack = TRUE) 
+  var.get.nc(nc, "streamflow", start = c(comid_index[x],1), count =c(1, NA), unpack = TRUE) 
 }))
 
 nhd$maxFlow  <- apply(records, 1, max)
